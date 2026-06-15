@@ -1,0 +1,43 @@
+/* Global reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  color: #1a1a2e;
+  background: #fff;
+}
+
+/* Leaflet popup overrides */
+.popup-content h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1a3a5c;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #e0e7ef;
+  padding-bottom: 6px;
+}
+
+.popup-content dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  font-size: 0.8rem;
+}
+
+.popup-content dt {
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+}
+
+.popup-content dd {
+  color: #222;
+}

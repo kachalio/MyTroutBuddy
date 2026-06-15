@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+jspm_packages/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.development.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Build outputs (if using TypeScript or bundlers)
+dist/
+build/
+
+# Optional IDE configurations
+.vscode/
+.idea/
