@@ -63,7 +63,7 @@ export default function App() {
                 {loadingStage === 'cache'
                   ? 'Loading cached elevations…'
                   : loadingStage === 'elevation'
-                  ? 'Fetching elevations from Open-Meteo (first load, ~60 s)…'
+                  ? 'Fetching elevations from Open-Meteo (this will take a while on first load)…'
                   : 'Fetching stream data from NCWRC…'}
               </p>
             </div>

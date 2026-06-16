@@ -5,9 +5,9 @@ const BASE_URL =
 
 const ELEV_API = 'https://api.open-meteo.com/v1/elevation';
 const ELEV_BATCH = 100;
-const ELEV_DELAY_MS = 12000;
-const ELEV_LONG_PAUSE_MS = 60000;
-const ELEV_LONG_PAUSE_EVERY = 5;
+const ELEV_DELAY_MS = 11000;
+const ELEV_LONG_PAUSE_MS = 30000;
+const ELEV_LONG_PAUSE_EVERY = 6;
 const CACHE_KEY = 'pmtw_elevations_openmeteo';
 
 // Open-Meteo API LIMITS: 
@@ -69,9 +69,11 @@ async function fetchElevations(points) {
 
   for (let b = 0; b < batchCount; b++) {
     if (b > 0) await sleep(ELEV_DELAY_MS);
-    // if (b > 0 && b % ELEV_LONG_PAUSE_EVERY === 0) {
-    //   await sleep(ELEV_LONG_PAUSE_MS);
-    // }
+    console.log("Pausing before batch", b, "of", batchCount, "for "+ ELEV_DELAY_MS + "ms");
+    if (b > 0 && b % ELEV_LONG_PAUSE_EVERY === 0) {
+      console.log("Long pause before batch", b, "of", batchCount, "for "+ ELEV_LONG_PAUSE_MS + "ms");
+      await sleep(ELEV_LONG_PAUSE_MS);
+    }
 
     const i = b * ELEV_BATCH;
     const slice = points.slice(i, i + ELEV_BATCH);
