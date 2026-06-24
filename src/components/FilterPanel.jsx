@@ -101,7 +101,7 @@ export default function FilterPanel({
           ) : (
             <>
               Showing <strong>{visibleCount.toLocaleString()}</strong> of{' '}
-              <strong>{totalCount.toLocaleString()}</strong> reaches
+              <strong>{totalCount.toLocaleString()}</strong> segments
             </>
           )}
         </p>
@@ -111,7 +111,7 @@ export default function FilterPanel({
       <div className="filter-section">
         <h3>Elevation Filter</h3>
         <p className="hint" style={{ marginBottom: 10 }}>
-          Based on midpoint elevation (SRTM DEM). Data range:{' '}
+          Segments are shown when their endpoint elevation range overlaps this filter (start→mid, mid→end). Data range:{' '}
           <strong>{elevRange[0]} m</strong> – <strong>{elevRange[1]} m</strong>
           &nbsp;({toFt(elevRange[0])} – {toFt(elevRange[1])} ft).
         </p>

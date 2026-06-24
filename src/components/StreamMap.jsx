@@ -71,7 +71,12 @@ function StreamLayer({ features }) {
               <dt>Classification</dt><dd>${p.WRC_Class || p.FIRST_WRC_ || '—'}</dd>
               <dt>County</dt><dd>${p.FIRST_MHTW || '—'}</dd>
               <dt>Regulation</dt><dd>${p.FIRST_Reg_ || '—'}</dd>
-              <dt>Midpoint Elevation</dt><dd>${mFmt(p._elev)}</dd>
+              <dt>Segment</dt><dd>${p._segment_label || 'Full Reach'}</dd>
+              <dt>Segment Elev. Start</dt><dd>${mFmt(p._seg_elev_from)}</dd>
+              <dt>Segment Elev. End</dt><dd>${mFmt(p._seg_elev_to)}</dd>
+              <dt>Start Elevation</dt><dd>${mFmt(p._elev_start)}</dd>
+              <dt>Midpoint Elevation</dt><dd>${mFmt(p._elev_mid ?? p._elev)}</dd>
+              <dt>End Elevation</dt><dd>${mFmt(p._elev_end)}</dd>
             </dl>
           </div>`,
           { maxWidth: 280 }

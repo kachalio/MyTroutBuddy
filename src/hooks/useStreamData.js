@@ -8,7 +8,7 @@ const ELEV_BATCH = 100;
 const ELEV_DELAY_MS = 11000;
 const ELEV_LONG_PAUSE_MS = 30000;
 const ELEV_LONG_PAUSE_EVERY = 6;
-const CACHE_KEY = 'pmtw_elevations_openmeteo';
+const CACHE_KEY = 'pmtw_elevations_openmeteo_v2';
 
 // Open-Meteo API LIMITS: 
 //  10,000 calls per day
@@ -24,8 +24,8 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Return the midpoint [lon, lat] of a LineString or MultiLineString. */
-function midpoint(geometry) {
+/** Return sampled [lon, lat] points for start/mid/end of a stream geometry. */
+function samplePoints(geometry) {
   if (!geometry) return null;
   const { type, coordinates } = geometry;
   let coords;
@@ -37,11 +37,19 @@ function midpoint(geometry) {
     return null;
   }
   if (!coords.length) return null;
+
+  const start = coords[0];
   const mid = coords[Math.floor(coords.length / 2)];
-  return [mid[0], mid[1]];
+  const end = coords[coords.length - 1];
+
+  return {
+    start: start ? [start[0], start[1]] : null,
+    mid: mid ? [mid[0], mid[1]] : null,
+    end: end ? [end[0], end[1]] : null,
+  };
 }
 
-/** Read cached elevation array from localStorage. Returns null on miss. */
+/** Read cached elevation samples from localStorage. Returns null on miss. */
 function readCache() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -51,7 +59,7 @@ function readCache() {
   }
 }
 
-/** Persist elevation array to localStorage (best-effort). */
+/** Persist elevation samples to localStorage (best-effort). */
 function writeCache(elevations) {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(elevations));
@@ -136,27 +144,46 @@ export function useStreamData() {
         // Using this Line below for testing //
         // const raw = data.features.slice(0, 2000) || [];
         console.log('Fetched stream features:', raw.length);
-        const midpoints = raw.map((f) => midpoint(f.geometry));
+        const samples = raw.map((f) => samplePoints(f.geometry));
 
         // ── 2. Elevations — cache first, then Open-Meteo ───────────────────
         let allElevations = readCache();
 
-        if (allElevations && allElevations.length === raw.length) {
+        const hasValidCache =
+          Array.isArray(allElevations) &&
+          allElevations.length === raw.length &&
+          allElevations.every(
+            (entry) =>
+              entry &&
+              Object.prototype.hasOwnProperty.call(entry, 'start') &&
+              Object.prototype.hasOwnProperty.call(entry, 'mid') &&
+              Object.prototype.hasOwnProperty.call(entry, 'end')
+          );
+
+        if (hasValidCache) {
           setLoadingStage('cache');
         } else {
           setLoadingStage('elevation');
 
-          const validIndices = midpoints
-            .map((p, i) => (p ? i : null))
-            .filter((i) => i !== null);
-          const validPoints = validIndices.map((i) => midpoints[i]);
+          const pointRequests = [];
+          samples.forEach((sample, featureIdx) => {
+            if (!sample) return;
+            ['start', 'mid', 'end'].forEach((kind) => {
+              const point = sample[kind];
+              if (!point) return;
+              pointRequests.push({ featureIdx, kind, point });
+            });
+          });
 
-          const fetched = await fetchElevations(validPoints);
+          const fetched = await fetchElevations(pointRequests.map((r) => r.point));
           if (cancelled) return;
 
-          allElevations = new Array(raw.length).fill(null);
-          validIndices.forEach((featureIdx, j) => {
-            allElevations[featureIdx] = fetched[j];
+          allElevations = new Array(raw.length)
+            .fill(null)
+            .map(() => ({ start: null, mid: null, end: null }));
+
+          pointRequests.forEach(({ featureIdx, kind }, j) => {
+            allElevations[featureIdx][kind] = fetched[j] ?? null;
           });
 
           writeCache(allElevations);
@@ -167,12 +194,24 @@ export function useStreamData() {
         let globalMax = -Infinity;
 
         const enriched = raw.map((f, i) => {
-          const elev = allElevations[i] ?? null;
-          if (elev !== null) {
-            if (elev < globalMin) globalMin = elev;
-            if (elev > globalMax) globalMax = elev;
+          const elevSample = allElevations[i] ?? { start: null, mid: null, end: null };
+          const elevMid = elevSample.mid ?? null;
+
+          if (elevMid !== null) {
+            if (elevMid < globalMin) globalMin = elevMid;
+            if (elevMid > globalMax) globalMax = elevMid;
           }
-          return { ...f, properties: { ...f.properties, _elev: elev } };
+
+          return {
+            ...f,
+            properties: {
+              ...f.properties,
+              _elev: elevMid,
+              _elev_start: elevSample.start,
+              _elev_mid: elevMid,
+              _elev_end: elevSample.end,
+            },
+          };
         });
 
         if (!cancelled) {

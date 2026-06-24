@@ -2,10 +2,24 @@
   "name": "stream-elevation",
   "version": "1.0.0",
   "private": true,
+  "description": "",
+  "homepage": "https://github.com/kachalio/MyTroutBuddy#readme",
+  "bugs": {
+    "url": "https://github.com/kachalio/MyTroutBuddy/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kachalio/MyTroutBuddy.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "server.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server.js"
   },
   "dependencies": {
     "react": "^18.3.1",
