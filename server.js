@@ -19,12 +19,6 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: '50mb' }));
-
-app.use(express.static(path.join(__dirname, 'dist')));
-
-app.use((req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
 /**
  * POST /api/elevations
  * Proxies elevation requests to Open-Meteo with server-side throttling.
@@ -76,6 +70,12 @@ app.post('/api/elevations', async (req, res) => {
     console.error('[Elevation] Error:', error);
     res.status(500).json({ error: error.message });
   }
+});
+
+app.use(express.static(path.join(__dirname, 'dist')));
+
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 function sleep(ms) {
