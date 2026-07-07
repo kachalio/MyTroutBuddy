@@ -138,6 +138,10 @@ export default function App() {
     });
   }
 
+  const hasUsableMapData = features.length > 0;
+  const showBlockingError = Boolean(error) && !hasUsableMapData;
+  const showWarningBanner = Boolean(error) && hasUsableMapData;
+
   return (
     <div className="app">
       <header className="app-header">
@@ -171,9 +175,14 @@ export default function App() {
               </p>
             </div>
           )}
-          {error && (
+          {showBlockingError && (
             <div className="overlay error-overlay">
               <p>⚠ Could not load data: {error}</p>
+            </div>
+          )}
+          {showWarningBanner && (
+            <div className="warning-banner" role="status" aria-live="polite">
+              <p>⚠ Partial elevation data: {error}</p>
             </div>
           )}
           <StreamMap features={filteredFeatures} />
