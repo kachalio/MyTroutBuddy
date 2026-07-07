@@ -56,6 +56,7 @@ export default function FilterPanel({
   loading,
   visibleCount,
   totalCount,
+  cacheProgress,
 }) {
   const [localMin, setLocalMin] = useState(elevFilter[0]);
   const [localMax, setLocalMax] = useState(elevFilter[1]);
@@ -105,6 +106,18 @@ export default function FilterPanel({
             </>
           )}
         </p>
+        <div className="cache-progress" aria-live="polite">
+          <div className="cache-progress-row">
+            <span>Elevation cache</span>
+            <strong>{cacheProgress.percent}%</strong>
+          </div>
+          <div className="cache-progress-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={cacheProgress.percent}>
+            <span style={{ width: `${cacheProgress.percent}%` }} />
+          </div>
+          <p className="cache-progress-meta">
+            {cacheProgress.cachedPoints.toLocaleString()} / {cacheProgress.totalPoints.toLocaleString()} points cached
+          </p>
+        </div>
       </div>
 
       {/* ── Elevation ── */}

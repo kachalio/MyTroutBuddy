@@ -8,7 +8,7 @@ const ELEV_BATCH = 100;
 const ELEV_DELAY_MS = 11000;
 const ELEV_LONG_PAUSE_MS = 30000;
 const ELEV_LONG_PAUSE_EVERY = 6;
-const CACHE_KEY = 'pmtw_elevations_openmeteo_v2';
+const CACHE_KEY = 'pmtw_elevations_openmeteo_v3';
 
 // Open-Meteo API LIMITS: 
 //  10,000 calls per day
@@ -53,7 +53,17 @@ function samplePoints(geometry) {
 function readCache() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    // v3 shape: { version: 3, entries: [...] }
+    if (parsed && parsed.version === 3 && Array.isArray(parsed.entries)) {
+      return parsed.entries;
+    }
+
+    // Legacy shape: plain array of entries.
+    if (Array.isArray(parsed)) return parsed;
+    return null;
   } catch {
     return null;
   }
@@ -62,8 +72,30 @@ function readCache() {
 /** Persist elevation samples to localStorage (best-effort). */
 function writeCache(elevations) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(elevations));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ version: 3, entries: elevations }));
   } catch { /* quota / private-mode */ }
+}
+
+function createEmptyElevations(count) {
+  return new Array(count)
+    .fill(null)
+    .map(() => ({ start: null, mid: null, end: null }));
+}
+
+function normalizeCache(cached, featureCount) {
+  const normalized = createEmptyElevations(featureCount);
+  if (!Array.isArray(cached)) return normalized;
+
+  for (let i = 0; i < featureCount; i++) {
+    const src = cached[i];
+    if (!src || typeof src !== 'object') continue;
+    normalized[i] = {
+      start: src.start ?? null,
+      mid: src.mid ?? null,
+      end: src.end ?? null,
+    };
+  }
+  return normalized;
 }
 
 /**
@@ -74,6 +106,8 @@ async function fetchElevations(points) {
   const results = new Array(points.length).fill(null);
   const retryDelays = [30000, 60000]; // 30s, 60s, 120s
   const batchCount = Math.ceil(points.length / ELEV_BATCH);
+  let completedBatches = 0;
+  let aborted = false;
 
   for (let b = 0; b < batchCount; b++) {
     if (b > 0) await sleep(ELEV_DELAY_MS);
@@ -99,14 +133,20 @@ async function fetchElevations(points) {
       }
     }
 
-    if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
+    if (!res.ok) {
+      aborted = true;
+      console.warn(`Open-Meteo batch ${b + 1}/${batchCount} failed with HTTP ${res.status}. Keeping partial elevation cache.`);
+      break;
+    }
+
     const json = await res.json();
     (json.elevation ?? []).forEach((e, j) => {
       results[i + j] = e;
     });
+    completedBatches += 1;
   }
 
-  return results;
+  return { results, completedBatches, batchCount, aborted };
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -117,6 +157,11 @@ export function useStreamData() {
   const [loadingStage, setLoadingStage] = useState('streams');
   const [error, setError] = useState(null);
   const [elevRange, setElevRange] = useState([0, 2000]);
+  const [cacheProgress, setCacheProgress] = useState({
+    cachedPoints: 0,
+    totalPoints: 0,
+    percent: 0,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -146,47 +191,71 @@ export function useStreamData() {
         console.log('Fetched stream features:', raw.length);
         const samples = raw.map((f) => samplePoints(f.geometry));
 
-        // ── 2. Elevations — cache first, then Open-Meteo ───────────────────
-        let allElevations = readCache();
+        // ── 2. Elevations — load cache and request only missing points ─────
+        const cachedElevations = readCache();
+        const allElevations = normalizeCache(cachedElevations, raw.length);
 
-        const hasValidCache =
-          Array.isArray(allElevations) &&
-          allElevations.length === raw.length &&
-          allElevations.every(
-            (entry) =>
-              entry &&
-              Object.prototype.hasOwnProperty.call(entry, 'start') &&
-              Object.prototype.hasOwnProperty.call(entry, 'mid') &&
-              Object.prototype.hasOwnProperty.call(entry, 'end')
-          );
-
-        if (hasValidCache) {
-          setLoadingStage('cache');
-        } else {
-          setLoadingStage('elevation');
-
-          const pointRequests = [];
-          samples.forEach((sample, featureIdx) => {
-            if (!sample) return;
-            ['start', 'mid', 'end'].forEach((kind) => {
-              const point = sample[kind];
-              if (!point) return;
-              pointRequests.push({ featureIdx, kind, point });
-            });
+        const pointRequests = [];
+        samples.forEach((sample, featureIdx) => {
+          if (!sample) return;
+          ['start', 'mid', 'end'].forEach((kind) => {
+            const point = sample[kind];
+            if (!point) return;
+            if (allElevations[featureIdx][kind] !== null) return;
+            pointRequests.push({ featureIdx, kind, point });
           });
+        });
 
-          const fetched = await fetchElevations(pointRequests.map((r) => r.point));
+        const totalPoints = pointRequests.length + allElevations.reduce((count, entry) => {
+          let filled = 0;
+          if (entry.start !== null) filled += 1;
+          if (entry.mid !== null) filled += 1;
+          if (entry.end !== null) filled += 1;
+          return count + filled;
+        }, 0);
+
+        const cachedPointsBeforeFetch = totalPoints - pointRequests.length;
+        setCacheProgress({
+          cachedPoints: cachedPointsBeforeFetch,
+          totalPoints,
+          percent: totalPoints === 0 ? 100 : Math.round((cachedPointsBeforeFetch / totalPoints) * 100),
+        });
+
+        if (pointRequests.length > 0) {
+          setLoadingStage('elevation');
+          const fetchResult = await fetchElevations(pointRequests.map((r) => r.point));
           if (cancelled) return;
 
-          allElevations = new Array(raw.length)
-            .fill(null)
-            .map(() => ({ start: null, mid: null, end: null }));
-
           pointRequests.forEach(({ featureIdx, kind }, j) => {
-            allElevations[featureIdx][kind] = fetched[j] ?? null;
+            const elev = fetchResult.results[j];
+            if (elev !== null && elev !== undefined) {
+              allElevations[featureIdx][kind] = elev;
+            }
+          });
+
+          const cachedPointsAfterFetch = allElevations.reduce((count, entry) => {
+            let filled = 0;
+            if (entry.start !== null) filled += 1;
+            if (entry.mid !== null) filled += 1;
+            if (entry.end !== null) filled += 1;
+            return count + filled;
+          }, 0);
+
+          setCacheProgress({
+            cachedPoints: cachedPointsAfterFetch,
+            totalPoints,
+            percent: totalPoints === 0 ? 100 : Math.round((cachedPointsAfterFetch / totalPoints) * 100),
           });
 
           writeCache(allElevations);
+
+          if (fetchResult.aborted && !cancelled) {
+            setError(
+              `Elevation fetch rate-limited after ${fetchResult.completedBatches}/${fetchResult.batchCount} batches. Showing partial elevations and caching progress.`
+            );
+          }
+        } else {
+          setLoadingStage('cache');
         }
 
         // ── 3. Merge elevations onto features ──────────────────────────────
@@ -233,5 +302,5 @@ export function useStreamData() {
     return () => { cancelled = true; };
   }, []);
 
-  return { features, loading, loadingStage, error, elevRange };
+  return { features, loading, loadingStage, error, elevRange, cacheProgress };
 }

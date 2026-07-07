@@ -66,7 +66,7 @@ function segmentPassesFilter(a, b, min, max) {
 }
 
 export default function App() {
-  const { features, loading, loadingStage, error, elevRange } = useStreamData();
+  const { features, loading, loadingStage, error, elevRange, cacheProgress } = useStreamData();
 
   const [elevFilter, setElevFilter] = useState([0, 2000]);
   const [selectedClasses, setSelectedClasses] = useState(new Set(ALL_CLASSES));
@@ -155,6 +155,7 @@ export default function App() {
           loading={loading}
           visibleCount={filteredFeatures.length}
           totalCount={totalSegmentCount}
+          cacheProgress={cacheProgress}
         />
 
         <main className="map-wrapper">
