@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 const BASE_URL =
-  'https://services1.arcgis.com/YfqBAUM5nWR3yhGP/arcgis/rest/services/PMTW_streams_2025/FeatureServer/0';
+  'https://services1.arcgis.com/YfqBAUM5nWR3yhGP/arcgis/rest/services/PMTW_streams_2026/FeatureServer/0';
 
 const ELEV_API = 'https://api.open-meteo.com/v1/elevation';
 const ELEV_BATCH = 100;
@@ -25,6 +25,51 @@ function sleep(ms) {
 }
 
 /** Return sampled [lon, lat] points for start/mid/end of a stream geometry. */
+function pickFirstNonEmpty(values) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    return value;
+  }
+  return null;
+}
+
+function normalizeProperties(properties) {
+  if (!properties || typeof properties !== 'object') return {};
+
+  return {
+    ...properties,
+    FIRST_WRC_: pickFirstNonEmpty([
+      properties.FIRST_WRC_,
+      properties.FIRST_WRC_CLASS,
+      properties.WRC_Class,
+    ]),
+    WRC_Class: pickFirstNonEmpty([
+      properties.WRC_Class,
+      properties.FIRST_WRC_CLASS,
+      properties.FIRST_WRC_,
+    ]),
+    FIRST_Reg_: pickFirstNonEmpty([
+      properties.FIRST_Reg_,
+      properties.FIRST_Reg_Descri,
+      properties.FIRST_Reg_Name,
+      properties.FIRST_Reg1,
+    ]),
+    FIRST_Reg1: pickFirstNonEmpty([
+      properties.FIRST_Reg1,
+      properties.FIRST_Reg_Name,
+      properties.FIRST_Reg_Descri,
+      properties.FIRST_Reg_,
+    ]),
+    FIRST_MHTW: pickFirstNonEmpty([
+      properties.FIRST_MHTW,
+      properties.FIRST_MHTW_City,
+      properties.MHTW_Reach,
+      properties.MHTW_City,
+    ]),
+  };
+}
+
 function samplePoints(geometry) {
   if (!geometry) return null;
   const { type, coordinates } = geometry;
@@ -174,11 +219,13 @@ export function useStreamData() {
         setLoadingStage('streams');
         const params = new URLSearchParams({
           where: '1=1',
-          outFields: 'Displ_Name,FIRST_WRC_,WRC_Class,FIRST_Reg_,FIRST_Reg1,FIRST_MHTW',
+          outFields: '*',
           outSR: '4326',
           f: 'geojson',
-           resultRecordCount: '2000', // fetch all (NCWRC limit is 10k)
+          resultRecordCount: '2000', // fetch all (NCWRC limit is 10k)
         });
+
+        console.log(params.toString());
 
         const res = await fetch(`${BASE_URL}/query?${params}`);
         if (!res.ok) throw new Error(`Stream API HTTP ${res.status}`);
@@ -186,14 +233,18 @@ export function useStreamData() {
         if (cancelled) return;
 
         const raw = data.features || [];
+        const normalizedFeatures = raw.map((feature) => ({
+          ...feature,
+          properties: normalizeProperties(feature.properties),
+        }));
         // Using this Line below for testing //
-        // const raw = data.features.slice(0, 2000) || [];
-        console.log('Fetched stream features:', raw.length);
-        const samples = raw.map((f) => samplePoints(f.geometry));
+        // const normalizedFeatures = normalizedFeatures.slice(0, 2000);
+        console.log('Fetched stream features:', normalizedFeatures.length);
+        const samples = normalizedFeatures.map((f) => samplePoints(f.geometry));
 
         // ── 2. Elevations — load cache and request only missing points ─────
         const cachedElevations = readCache();
-        const allElevations = normalizeCache(cachedElevations, raw.length);
+        const allElevations = normalizeCache(cachedElevations, normalizedFeatures.length);
 
         const pointRequests = [];
         samples.forEach((sample, featureIdx) => {
@@ -262,7 +313,7 @@ export function useStreamData() {
         let globalMin = Infinity;
         let globalMax = -Infinity;
 
-        const enriched = raw.map((f, i) => {
+        const enriched = normalizedFeatures.map((f, i) => {
           const elevSample = allElevations[i] ?? { start: null, mid: null, end: null };
           const elevMid = elevSample.mid ?? null;
 
